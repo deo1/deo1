@@ -28,3 +28,8 @@ l.sort()
 print(l)
 l.reverse()
 print(l)
+
+a = set(l)
+print(next(iter(a)))
+print(a)
+print(len(a))
