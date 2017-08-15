@@ -1,3 +1,5 @@
+# as of 2017-08-14, windows version only available via conda install -c peterjc123 pytorch
+
 # CUDA TEST
 import torch
 from torch.autograd import Variable
