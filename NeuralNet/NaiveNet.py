@@ -55,7 +55,7 @@ def main():
 class NaiveNet():
     """A naive 3 layer neural network without biases."""
 
-    def __init__(self, input_nodes, hidden_nodes, output_nodes, learn_rate=0.3, initial_weights='gaussian', loss_function='difference'):
+    def __init__(self, input_nodes, hidden_nodes, output_nodes, learn_rate=0.3, initial_weights='gaussian', loss_function='squared'):
         self.inodes = input_nodes
         self.hnodes = hidden_nodes
         self.onodes = output_nodes
@@ -82,14 +82,10 @@ class NaiveNet():
             raise RuntimeError('initial_weights: "{}" not supported.'.format(initial_weights))
 
     def __set_loss_function(self, loss_function):
-        if loss_function == 'difference':
+        if loss_function == 'squared':
+            # written as a simple difference here, because the squared term is
+            # already accounted for in the differentiated weights update eq.
             self.loss_function = lambda x, y: x - y
-        elif loss_function == 'euclidean':
-            self.loss_function = lambda x, y: abs(x - y)
-            raise RuntimeError('does not work - need to fix')
-        elif loss_function == 'squared':
-            self.loss_function = lambda x, y: pow(x - y, 2)
-            raise RuntimeError('does not work - need to fix')
         else:
             raise RuntimeError('loss_function_type: "{}" not supported.'.format(loss_function))
 

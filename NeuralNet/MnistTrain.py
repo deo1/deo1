@@ -21,18 +21,19 @@ mnist_test.iloc[:, 1:] = (mnist_test.iloc[:, 1:] + eps) / max_value
 mnist_train.iloc[:, 1:] = (mnist_train.iloc[:, 1:] + eps) / max_value
 
 # intialize neural net
-mnist_net = NaiveNet(input_nodes, 200, output_nodes, learn_rate=0.2)
+mnist_net = NaiveNet(input_nodes, 200, output_nodes, learn_rate=0.1)
 
 # Train the neural net on the train images
 epoch_iteration = 0
 chatty = 0
 img = 0
-epochs = 10
+epochs = 20
 sleeptime = 0
 evaluations = []
 print('\nTraining model...')
 for epc in range(epochs):
     training_iteration = 0
+    mnist_train = mnist_train.sample(frac=1) # randomly shuffle the training order
 
     for img in range(num_train_images):
         input_img = mnist_train.iloc[img, 1:] # e.g. 28 x 28 pixels as 1D array
