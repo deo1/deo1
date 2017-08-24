@@ -1,4 +1,5 @@
 # https://github.com/pytorch/examples/tree/master/reinforcement_learning
+# see also: http://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html
 import argparse
 import gym
 import numpy as np
