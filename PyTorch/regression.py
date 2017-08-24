@@ -3,11 +3,9 @@ from __future__ import print_function
 from itertools import count
 
 import torch
+import torch.nn as nn
 import torch.autograd
-import torch.nn.functional as F
 from torch.autograd import Variable
-import seaborn as sns
-import numpy as np
 
 POLY_DEGREE = 4
 W_target = torch.randn(POLY_DEGREE, 1) * 5
@@ -38,34 +36,43 @@ def get_batch(batch_size=32, randomize=False):
     if randomize: y += torch.randn(1)
     return Variable(x), Variable(y)
 
+class RegressionNet(nn.Module):
+    def __init__(self, input_nodes, learn_rate=0.1):
+        super().__init__()
+        self.hidden = nn.Linear(input_nodes, 1)
+
+        self.loss_function = nn.SmoothL1Loss()
+        self.lr = learn_rate
+        self.optimizer = torch.optim.SGD(self.parameters(), lr=learn_rate)
+
+    def forward(self, x):
+        return self.hidden(x)
+
+    def learn(self, output, targets):
+        loss = self.loss_function(output, targets)
+
+        # Backward pass and weights update
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
+        return loss
+
 # Define model
-fc = torch.nn.Linear(W_target.size(0), 1)
-fc = fc.cuda()
+regression_net = RegressionNet(W_target.size(0))
 
 for batch_idx in count(1):
     # Get data
-    batch_x, batch_y = get_batch(64)
-    batch_x = batch_x.cuda()
-    batch_y = batch_y.cuda()
-    
-    # Reset gradients
-    fc.zero_grad()
+    batch_x, batch_y = get_batch()
 
-    # Forward pass
-    output = F.smooth_l1_loss(fc(batch_x), batch_y)
-    loss = output.data[0]
-
-    # Backward pass
-    output.backward()
-
-    # Apply gradients
-    for param in fc.parameters():
-        param.data.add_(-0.1 * param.grad.data)
+    # Forward pass then backward pass
+    output = regression_net(batch_x)
+    loss = regression_net.learn(output, batch_y)
 
     # Stop criterion
-    if loss < 1e-4:
+    if loss.data[0] < 1e-3:
         break
 
-print('Loss: {:.6f} after {} batches'.format(loss, batch_idx))
-print('==> Learned function:\t' + poly_desc(fc.weight.data.view(-1), fc.bias.data))
+print('Loss: {:.6f} after {} batches'.format(loss.data[0], batch_idx))
+print('==> Learned function:\t' + poly_desc(regression_net.hidden.weight.data.view(-1), regression_net.hidden.bias.data))
 print('==> Actual function:\t' + poly_desc(W_target.view(-1), b_target))
