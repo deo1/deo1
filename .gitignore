@@ -20,6 +20,10 @@ $RECYCLE.BIN/
 # IDE
 *.pyc
 
+# Data
+*.csv
+*.zip
+
 # =========================
 # Operating System Files
 # =========================
