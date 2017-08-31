@@ -8,9 +8,10 @@ class TaxiNet(nn.Module):
     def __init__(self, input_nodes, learn_rate=0.1, cuda=False):
         super().__init__()
         self.model = nn.Sequential(
-            nn.Linear(input_nodes, 200), nn.ReLU(),
-            nn.Linear(200, 100), nn.ReLU(),
-            nn.Linear(100, 1), nn.ReLU())
+            nn.Linear(input_nodes, 10), nn.LeakyReLU(),
+            nn.Linear(10, 5), nn.ReLU(),
+            nn.Linear(5, 3), nn.ReLU(),
+            nn.Linear(3, 1), nn.ReLU())
         if cuda:
             self.model = self.model.cuda()
 

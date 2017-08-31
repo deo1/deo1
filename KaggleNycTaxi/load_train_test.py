@@ -1,4 +1,5 @@
 # reference: https://www.kaggle.com/c/nyc-taxi-trip-duration
+# reference: http://www.faqs.org/faqs/ai-faq/neural-nets/part1/preamble.html
 # feature analysis: https://www.kaggle.com/headsortails/nyc-taxi-eda-update-the-fast-the-curious
 
 from taxinet import TaxiNet
@@ -90,18 +91,19 @@ combined = combined[
     & (combined['crows_distance'] <= max_distance)
     & (combined['trip_duration'] <= max_duration)]
 
+# TODO : see if loss is lognormal, convert for training then back for scoring
 
 # ==============================================
 # Train the neural net to estimate trip duration
 # ==============================================
 
-epochs = 10                                  # number of passes across the training data
+epochs = 20                                  # number of passes across the training data
 train = combined[combined['set'] == 'train'] # filter back down to train rows
 exclude = ['id', 'set']                      # we won't use these columns for training
 loss_column = 'trip_duration'                # this is what we're trying to predict
 batch_size = 1024                            # number of samples trained per pass
 feature_count = len([col for col in train.columns if col not in exclude and col != loss_column])
-taxi_net = TaxiNet(feature_count, cuda=True) # instantiate the neural net graph
+taxi_net = TaxiNet(feature_count, learn_rate=0.0002, cuda=True) # instantiate the neural net graph
 
 for epoch in range(epochs):
     for batch_idx, batch_x, batch_y in taxi_net.get_batches(train, loss_column, batch_size=1024, exclude=exclude):
@@ -111,12 +113,13 @@ for epoch in range(epochs):
         # TODO : convolutional layers on the coordinates
         output = taxi_net(batch_x)
         loss = taxi_net.learn(output, batch_y)
-
-        print('\rLoss: {:.3f} after {} batches ({:.1f}%), {} epochs.{}'.format(
-                loss.data[0],
-                batch_idx,
-                100 * batch_idx * batch_size / train.shape[0],
-                epoch,
+        
+        print('\rLoss: {:.3f} after {} batches ({:.1f}%), {} epochs. (max(y): {:.1f}){}'.format(
+                loss.data[0],                                  # iteration loss
+                batch_idx,                                     # iteration count
+                100 * batch_idx * batch_size / train.shape[0], # % complete within epoch
+                epoch,                                         # epoch count
+                output.max().data[0],                          # to monitor that the weights haven't saturated to 0
                 "       "), end="")
 
     # shuffle the data so that new batches / orders are used in the next epoch
