@@ -120,34 +120,7 @@ taxi_net = TaxiNet(
     cuda=False,
     max_output=max_duration)
 
-taxi_net.train() # train mode (learn batchnorm mean/var)
-for epoch in range(epochs):
-    for batch_idx, batch_x, batch_y in taxi_net.get_batches(train, loss_column, batch_size=batch_size, exclude=exclude):
-        
-        # Forward pass then backward pass
-        # TODO : custom loss function matching the Kaggle requirements
-        # TODO : convolutional layers on the coordinates
-        # TODO : cross validation
-        output = taxi_net(batch_x)
-        loss = taxi_net.learn(output, batch_y)
-        
-        print('\rLoss: {:.3f} after {} batches ({:.1f}%), {} epochs. (med(y): {:.1f}){}'.format(
-                loss.data[0],                                  # iteration loss
-                batch_idx,                                     # iteration count
-                100 * batch_idx * batch_size / train.shape[0], # % complete within epoch
-                epoch,                                         # epoch count
-                output.median().data[0],                       # to monitor that the weights haven't saturated to 0
-                "       "), end="")
-
-    # score and train on the whole set to see where we're at
-    _, all_x, all_y = next(taxi_net.get_batches(train, loss_column, batch_size=train.shape[0], exclude=exclude))
-    train_y = taxi_net(all_x)
-    train_loss = taxi_net.loss_function(train_y, all_y)
-    print('\nLoss: {:.3f} after {} epochs'.format(train_loss.data[0], epoch))
-    
-    # shuffle the data so that new batches / orders are used in the next epoch
-    train = train.sample(frac=1).reset_index(drop=True)
-
+taxi_net.learn_loop(train, loss_column, epochs, batch_size, exclude)
 
 # ==============================================
 # Produce estimates for the test set
@@ -156,8 +129,7 @@ for epoch in range(epochs):
 test = combined[combined['set'] == 'test'] # filter back down to test rows
 _, test_x, test_y = next(taxi_net.get_batches(test, loss_column, batch_size=test.shape[0], exclude=exclude))
 
-# TODO : for some reason this makes the results terrible
-#taxi_net.eval() # test mode (apply  batchnorm)
+#taxi_net.eval() # test mode (apply  batchnorm) # TODO : for some reason this makes the results terrible
 
 test_output = taxi_net(test_x)
 
