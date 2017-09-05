@@ -9,28 +9,29 @@ class TaxiNet(nn.Module):
         super().__init__()
         
         # TODO: batchnorm layers cause bug with cuda=True
+        # TODO: convolutional layers on the coordinates
         self.model = nn.Sequential(
             # Layer 1
-            nn.Linear(input_nodes, 10),        # affine
-            nn.BatchNorm1d(10, momentum=0.05), # normalize mean/variance
-            nn.PReLU(10),                      # adative leaky
-            nn.Dropout(p=0.002),               # regularize (small dropout when batchnorm)
+            nn.Linear(input_nodes, 100),        # affine
+            nn.BatchNorm1d(100, momentum=0.05), # normalize mean/variance
+            nn.PReLU(100),                      # adative leaky
+            nn.Dropout(p=0.002),                # regularize (small dropout when batchnorm)
             
             # Layer 2
-            nn.Linear(10, 7),                  # affine
-            nn.BatchNorm1d(7, momentum=0.05),  # normalize mean/variance
-            nn.PReLU(7),                       # adaptive leaky
-            nn.Dropout(p=0.002),               # regularize (small dropout when batchnorm)
+            nn.Linear(100, 50),                 # affine
+            nn.BatchNorm1d(50, momentum=0.05),  # normalize
+            nn.PReLU(50),                       # adaptive leaky
+            nn.Dropout(p=0.002),                # regularize
 
             # Layer 3
-            nn.Linear(7, 3),                   # affine
-            nn.BatchNorm1d(3, momentum=0.05),  # normalize mean/variance
-            nn.PReLU(3),                       # adaptive leaky
-            nn.Dropout(p=0.002),               # regularize (small dropout when batchnorm)
+            nn.Linear(50, 5),                   # affine
+            nn.BatchNorm1d(5, momentum=0.05),   # normalize
+            nn.PReLU(5),                        # adaptive leaky
+            nn.Dropout(p=0.002),                # regularize
 
             # Layer 3
-            nn.Linear(3, 1),                   # affine
-            nn.ReLU()                          # final output is [0, oo)
+            nn.Linear(5, 1),                    # affine
+            nn.ReLU()                           # final output is [0, oo)
         )
 
         # initialize weights
@@ -40,7 +41,7 @@ class TaxiNet(nn.Module):
         
         self.cuda = cuda
         self.max_output = max_output
-        self.loss_function = nn.SmoothL1Loss()
+        self.loss_function = nn.MSELoss()
         self.optimizer = torch.optim.Adam(self.parameters(), lr=learn_rate)
 
         if cuda:
@@ -86,24 +87,21 @@ class TaxiNet(nn.Module):
                 self.get_batches(data, loss_column, batch_size=batch_size, exclude=exclude):
                 
                 # Forward pass then backward pass
-                # TODO : custom loss function matching the Kaggle requirements
-                # TODO : convolutional layers on the coordinates
                 # TODO : cross validation
                 output = self.forward(batch_x)
                 loss = self.learn(output, batch_y)
-                if chatty > 0: self.print_minibatch_loop(loss, output, batch_idx, batch_size, data.shape[0], epoch)
+                if chatty > 0: self.print_minibatch_loop(loss.data[0]**0.5, output, batch_idx, batch_size, data.shape[0], epoch)
     
             # score and train on the whole set to see where we're at
-            if chatty > 0: self.print_epoch_loop(data, loss_column, epoch, exclude)
+            _, all_x, all_y = next(self.get_batches(data, loss_column, batch_size=data.shape[0], exclude=exclude))
+            train_y = self(all_x)
+            train_loss = self.loss_function(train_y, all_y)
+            if chatty > 0:
+                print('\nLoss: {:.4f} after {} epochs'.format(train_loss.data[0]**0.5, epoch))
             
             # shuffle the data so that new batches / orders are used in the next epoch
             if randomize: data = data.sample(frac=1).reset_index(drop=True)
 
-    def print_epoch_loop(self, data, loss_column, epoch, exclude):
-        _, all_x, all_y = next(self.get_batches(data, loss_column, batch_size=data.shape[0], exclude=exclude))
-        train_y = self(all_x)
-        train_loss = self.loss_function(train_y, all_y)
-        print('\nLoss: {:.3f} after {} epochs'.format(train_loss.data[0], epoch))
 
     # TODO
     def save_model(self):
@@ -111,8 +109,8 @@ class TaxiNet(nn.Module):
 
     @staticmethod
     def print_minibatch_loop(loss, output, batch_idx, batch_size, total_samples, epoch):
-        print('\rLoss: {:.3f} after {} batches ({:.1f}%), {} epochs. (med(y): {:.1f}){}'.format(
-            loss.data[0],                                  # iteration loss
+        print('\rLoss: {:.4f} after {} batches ({:.1f}%), {} epochs. (med(y): {:.1f}){}'.format(
+            loss,                                          # iteration loss
             batch_idx,                                     # iteration count
             100 * batch_idx * batch_size / total_samples,  # % complete within epoch
             epoch,                                         # epoch count

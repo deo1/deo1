@@ -11,6 +11,8 @@ from math import sin, cos, sqrt, atan2, radians
 
 # TODO args feature
 RUN_FEATURE_EXTRACTION = False
+MAX_DISTANCE = 100 * 10**3  # 100 km
+MAX_DURATION = 12 * 60 * 60 # 12 hours
 
 if (RUN_FEATURE_EXTRACTION):
     # ===============================
@@ -86,27 +88,42 @@ if (RUN_FEATURE_EXTRACTION):
         axis=1)
     
     # drop suspicious rows from the training data
-    max_distance = 100 * 10**3  # 100 km
-    max_duration = 12 * 60 * 60 # 12 hours
     combined = combined[
          (combined['set'] == 'test') |
         ((combined['set'] == 'train') &
-         (combined['crows_distance'] <= max_distance) &
-         (combined['trip_duration'] <= max_duration))]
+         (combined['crows_distance'] <= MAX_DISTANCE) &
+         (combined['trip_duration'] <= MAX_DURATION))]
     
     # TODO : see if loss is lognormal, convert for training then back for scoring
     
     combined.to_csv('./data/combined.csv', sep=',', index=None)
 
 else:
+    # already done pre=processing
     combined = pd.read_csv('./data/combined.csv')
+
+# take the log of the measure. this'll give a normal distribution as well as
+# allow us to use RMSE as the loss function instead of RMSLE on the original
+combined['trip_duration'] = combined['trip_duration'].apply(lambda t: max(0.01, t))
+combined['trip_duration'] = np.log(combined['trip_duration'].values)
+
+# bring in external data about actual distance by road
+# source: https://www.kaggle.com/oscarleo/new-york-city-taxi-with-osrm
+usecols = ['id', 'total_distance', 'total_travel_time', 'number_of_steps']
+fr1 = pd.read_csv('./data/osrm/fastest_routes_train_part_1.csv', usecols=usecols)
+fr2 = pd.read_csv('./data/osrm/fastest_routes_train_part_2.csv', usecols=usecols)
+test_street_info = pd.read_csv('./data/osrm/fastest_routes_test.csv', usecols=usecols)
+train_street_info = pd.concat([fr1, fr2])
+
+train = combined[combined['set'] == 'train'] # filter back down to train rows
+train = train.merge(train_street_info, how='left', on='id')
+train.dropna(inplace=True) # there was 1 null row introduced by the join
 
 # ==============================================
 # Train the neural net to estimate trip duration
 # ==============================================
 
 epochs = 30                                  # number of passes across the training data
-train = combined[combined['set'] == 'train'] # filter back down to train rows
 exclude = ['id', 'set']                      # we won't use these columns for training
 loss_column = 'trip_duration'                # this is what we're trying to predict
 batch_size = 2**15                           # number of samples trained per pass
@@ -116,9 +133,9 @@ feature_count = len([col for col in train.columns if col not in exclude and col 
 # instantiate the neural net
 taxi_net = TaxiNet(
     feature_count,
-    learn_rate=.014,
+    learn_rate=.007,
     cuda=False,
-    max_output=max_duration)
+    max_output=MAX_DURATION)
 
 taxi_net.learn_loop(train, loss_column, epochs, batch_size, exclude)
 
@@ -127,6 +144,8 @@ taxi_net.learn_loop(train, loss_column, epochs, batch_size, exclude)
 # ==============================================
 
 test = combined[combined['set'] == 'test'] # filter back down to test rows
+test = test.merge(test_street_info, how='left', on='id')
+test.dropna(inplace=True)
 _, test_x, test_y = next(taxi_net.get_batches(test, loss_column, batch_size=test.shape[0], exclude=exclude))
 
 #taxi_net.eval() # test mode (apply  batchnorm) # TODO : for some reason this makes the results terrible
@@ -137,6 +156,9 @@ if taxi_net.cuda:
     test[loss_column] = test_output.cpu().numpy()
 else:
     test[loss_column] = test_output.data.numpy()
+
+# convert from log space back to linear space for final estimates
+test[loss_column] = np.exp(test[loss_column].values)
 
 test_out = test[['id', loss_column]]
 test_out.to_csv('./data/submission_{}.csv'.format(datetime.strftime(datetime.utcnow(),"%Y-%m-%d-%H-%M-%S")), sep = ',', index = None)
