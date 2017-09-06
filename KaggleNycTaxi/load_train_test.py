@@ -123,21 +123,21 @@ train.dropna(inplace=True) # there was 1 null row introduced by the join
 # Train the neural net to estimate trip duration
 # ==============================================
 
-epochs = 30                                  # number of passes across the training data
+epochs = 200                                 # number of passes across the training data
 exclude = ['id', 'set']                      # we won't use these columns for training
 loss_column = 'trip_duration'                # this is what we're trying to predict
-batch_size = 2**15                           # number of samples trained per pass
+batch_size = 2**14                           # number of samples trained per pass
                                              # (use big batches when using batchnorm)
 feature_count = len([col for col in train.columns if col not in exclude and col != loss_column])
 
 # instantiate the neural net
 taxi_net = TaxiNet(
     feature_count,
-    learn_rate=.007,
+    learn_rate=0.011, # decays over time
     cuda=False,
     max_output=MAX_DURATION)
 
-taxi_net.learn_loop(train, loss_column, epochs, batch_size, exclude)
+taxi_net.learn_loop(train, loss_column, epochs, batch_size, exclude, 0.5, 50)
 
 # ==============================================
 # Produce estimates for the test set
@@ -145,7 +145,7 @@ taxi_net.learn_loop(train, loss_column, epochs, batch_size, exclude)
 
 test = combined[combined['set'] == 'test'] # filter back down to test rows
 test = test.merge(test_street_info, how='left', on='id')
-test.dropna(inplace=True)
+#test.dropna(inplace=True)
 _, test_x, test_y = next(taxi_net.get_batches(test, loss_column, batch_size=test.shape[0], exclude=exclude))
 
 #taxi_net.eval() # test mode (apply  batchnorm) # TODO : for some reason this makes the results terrible
