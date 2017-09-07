@@ -133,7 +133,7 @@ feature_count = len([col for col in train.columns if col not in exclude and col 
 # instantiate the neural net
 taxi_net = TaxiNet(
     feature_count,
-    learn_rate=0.011, # decays over time
+    learn_rate=0.014, # decays over time
     cuda=False,
     max_output=MAX_DURATION)
 
@@ -145,11 +145,9 @@ taxi_net.learn_loop(train, loss_column, epochs, batch_size, exclude, 0.5, 50)
 
 test = combined[combined['set'] == 'test'] # filter back down to test rows
 test = test.merge(test_street_info, how='left', on='id')
-#test.dropna(inplace=True)
 _, test_x, test_y = next(taxi_net.get_batches(test, loss_column, batch_size=test.shape[0], exclude=exclude))
 
-#taxi_net.eval() # test mode (apply  batchnorm) # TODO : for some reason this makes the results terrible
-
+#taxi_net.eval() # test mode (rolling avg for batchnorm) # only apply for single sample
 test_output = taxi_net(test_x)
 
 if taxi_net.cuda:
