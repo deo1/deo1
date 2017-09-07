@@ -12,38 +12,33 @@ class TaxiNet(nn.Module):
         # TODO: convolutional layers on the coordinates
         self.model = nn.Sequential(
             # Layer 1
-            nn.Linear(input_nodes, 50),        # affine
-            nn.BatchNorm1d(50, momentum=0.05), # normalize mean/variance
-            nn.PReLU(50),                      # adative leaky
-            nn.Dropout(p=0.002),               # regularize (small dropout when batchnorm)
+            nn.Linear(input_nodes, 50, bias=False), # affine
+            nn.BatchNorm1d(50, momentum=0.05),      # normalize mean/variance
+            nn.PReLU(50),                           # adaptive leaky
             
             # Layer 2
-            nn.Linear(50, 30),                 # affine
-            nn.BatchNorm1d(30, momentum=0.05), # normalize
-            nn.PReLU(30),                      # adaptive leaky
-            nn.Dropout(p=0.002),               # regularize
+            nn.Linear(50, 30, bias=False),          # affine
+            nn.BatchNorm1d(30, momentum=0.05),      # normalize
+            nn.PReLU(30),                           # adaptive leaky
 
             # Layer 3
-            nn.Linear(30, 20),                 # affine
-            nn.BatchNorm1d(20, momentum=0.05), # normalize
-            nn.PReLU(20),                      # adaptive leaky
-            nn.Dropout(p=0.002),               # regularize
+            nn.Linear(30, 20, bias=False),          # affine
+            nn.BatchNorm1d(20, momentum=0.05),      # normalize
+            nn.PReLU(20),                           # adaptive leaky
 
             # Layer 4
-            nn.Linear(20, 10),                 # affine
-            nn.BatchNorm1d(10, momentum=0.05), # normalize
-            nn.PReLU(10),                      # adaptive leaky
-            nn.Dropout(p=0.002),               # regularize
+            nn.Linear(20, 10, bias=False),          # affine
+            nn.BatchNorm1d(10, momentum=0.05),      # normalize
+            nn.PReLU(10),                           # adaptive leaky
 
             # Layer 5
-            nn.Linear(10, 5),                  # affine
-            nn.BatchNorm1d(5, momentum=0.05),  # normalize
-            nn.PReLU(5),                       # adaptive leaky
-            #nn.Dropout(p=0.002),               # regularize
+            nn.Linear(10, 5, bias=False),           # affine
+            nn.BatchNorm1d(5, momentum=0.05),       # normalize
+            nn.PReLU(5),                            # adaptive leaky
 
             # Layer 6
-            nn.Linear(5, 1),                   # affine
-            nn.ReLU()                          # final output is [0, oo)
+            nn.Linear(5, 1),                        # affine
+            nn.ReLU()                               # final output is [0, oo)
         )
 
         # initialize weights
