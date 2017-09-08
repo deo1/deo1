@@ -68,7 +68,13 @@ if (RUN_FEATURE_EXTRACTION):
     combined['dropoff_longitude'] = combined['dropoff_longitude'].apply(lambda loc: round(loc, 5))
     combined['pickup_latitude'] = combined['pickup_latitude'].apply(lambda loc: round(loc, 5))
     combined['pickup_longitude'] = combined['pickup_longitude'].apply(lambda loc: round(loc, 5))
-    
+
+    # 1 km clusters
+    combined['dropoff_latitude_cluster'] = combined['dropoff_latitude'].apply(lambda loc: round(loc, 2))
+    combined['dropoff_longitude_cluster'] = combined['dropoff_longitude'].apply(lambda loc: round(loc, 2))
+    combined['pickup_latitude_cluster'] = combined['pickup_latitude'].apply(lambda loc: round(loc, 2))
+    combined['pickup_longitude_cluster'] = combined['pickup_longitude'].apply(lambda loc: round(loc, 2))
+
     # compute an "as the crow flies" curvature distance to nearest 10th of a meter
     # https://en.wikipedia.org/wiki/Haversine_formula
     R = 6373000 # approximate radius of earth in meters
