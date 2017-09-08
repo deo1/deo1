@@ -123,10 +123,10 @@ train.dropna(inplace=True) # there was 1 null row introduced by the join
 # Train the neural net to estimate trip duration
 # ==============================================
 
-epochs = 200                                 # number of passes across the training data
+epochs = 100                                 # number of passes across the training data
 exclude = ['id', 'set']                      # we won't use these columns for training
 loss_column = 'trip_duration'                # this is what we're trying to predict
-batch_size = 2**14                           # number of samples trained per pass
+batch_size = 2**13                           # number of samples trained per pass
                                              # (use big batches when using batchnorm)
 feature_count = len([col for col in train.columns if col not in exclude and col != loss_column])
 
@@ -137,7 +137,7 @@ taxi_net = TaxiNet(
     cuda=False,
     max_output=MAX_DURATION)
 
-taxi_net.learn_loop(train, loss_column, epochs, batch_size, exclude, 0.5, 50)
+taxi_net.learn_loop(train, loss_column, epochs, batch_size, exclude, 0.5, 25)
 
 # ==============================================
 # Produce estimates for the test set
