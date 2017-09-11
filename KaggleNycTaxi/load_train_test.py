@@ -1,23 +1,31 @@
 # reference: https://www.kaggle.com/c/nyc-taxi-trip-duration
 # reference: http://www.faqs.org/faqs/ai-faq/neural-nets/part1/preamble.html
+# reference: https://www.kaggle.com/mathijs/weather-data-in-new-york-city-2016
 # feature analysis: https://www.kaggle.com/headsortails/nyc-taxi-eda-update-the-fast-the-curious
-
-from taxinet import TaxiNet
+import os
+from taxinet import TaxiNet, TaxiCombinerNet
 import torch
 import pandas as pd
 import numpy as np
 from datetime import datetime
 from math import sin, cos, sqrt, atan2, radians
+from torch.autograd import Variable
+from random import random
+from sklearn.decomposition import PCA
+from sklearn.cluster import MiniBatchKMeans
 
 # TODO args feature
 RUN_FEATURE_EXTRACTION = False
 MAX_DISTANCE = 100 * 10**3  # 100 km
 MAX_DURATION = 12 * 60 * 60 # 12 hours
+ENSEMBLE_COUNT = 5
 
+
+# ===============================
+# Date extraction
+# ===============================
+    
 if (RUN_FEATURE_EXTRACTION):
-    # ===============================
-    # Date extraction
-    # ===============================
     
     # read data
     test = pd.read_csv('./data/test.csv')
@@ -31,7 +39,7 @@ if (RUN_FEATURE_EXTRACTION):
     test['trip_duration'] = np.NaN
     
     # union `join='outer'` the train and test data so that encoding can be done holistically
-    # and reset the index to be monotically increasing and distinct
+    # and reset the index to be monotically increasing
     combined = pd.concat([test, train], join='outer')
     combined.set_index([list(range(0, combined.shape[0]))], inplace=True)
     
@@ -100,13 +108,30 @@ if (RUN_FEATURE_EXTRACTION):
          (combined['crows_distance'] <= MAX_DISTANCE) &
          (combined['trip_duration'] <= MAX_DURATION))]
     
-    # TODO : see if loss is lognormal, convert for training then back for scoring
-    
     combined.to_csv('./data/combined.csv', sep=',', index=None)
 
 else:
     # already done pre=processing
     combined = pd.read_csv('./data/combined.csv')
+
+# PCA looks pointless, but who knows.
+coords = np.vstack((combined[['pickup_latitude', 'pickup_longitude']].values,
+                    combined[['dropoff_latitude', 'dropoff_longitude']].values))
+
+pca = PCA().fit(coords)
+combined['pickup_pca0'] = pca.transform(combined[['pickup_latitude', 'pickup_longitude']])[:, 0]
+combined['pickup_pca1'] = pca.transform(combined[['pickup_latitude', 'pickup_longitude']])[:, 1]
+combined['dropoff_pca0'] = pca.transform(combined[['dropoff_latitude', 'dropoff_longitude']])[:, 0]
+combined['dropoff_pca1'] = pca.transform(combined[['dropoff_latitude', 'dropoff_longitude']])[:, 1]
+combined['pca_manhattan'] = \
+    np.abs(combined['dropoff_pca1'] - combined['pickup_pca1']) + \
+    np.abs(combined['dropoff_pca0'] - combined['pickup_pca0'])
+
+# cluster the lat/lon using KMeans
+sample_ind = np.random.permutation(len(coords))[:500000]
+kmeans = MiniBatchKMeans(n_clusters=100, batch_size=10000).fit(coords[sample_ind])
+combined['pickup_cluster'] = kmeans.predict(combined[['pickup_latitude', 'pickup_longitude']])
+combined['dropoff_cluster'] = kmeans.predict(combined[['dropoff_latitude', 'dropoff_longitude']])
 
 # take the log of the measure. this'll give a normal distribution as well as
 # allow us to use RMSE as the loss function instead of RMSLE on the original
@@ -125,6 +150,7 @@ train = combined[combined['set'] == 'train'] # filter back down to train rows
 train = train.merge(train_street_info, how='left', on='id')
 train.dropna(inplace=True) # there was 1 null row introduced by the join
 
+
 # ==============================================
 # Train the neural net to estimate trip duration
 # ==============================================
@@ -134,29 +160,64 @@ exclude = ['id', 'set']                      # we won't use these columns for tr
 loss_column = 'trip_duration'                # this is what we're trying to predict
 batch_size = 2**13                           # number of samples trained per pass
                                              # (use big batches when using batchnorm)
+lr_decay_factor = 0.5
+lr_decay_epoch = max(1, round(lr_decay_factor * 0.4 * epochs))
+early_stopping_rounds = 10
+cv = 0.2
+
 feature_count = len([col for col in train.columns if col not in exclude and col != loss_column])
 
-# instantiate the neural net
-taxi_net = TaxiNet(
-    feature_count,
-    learn_rate=0.014, # decays over time
-    cuda=False,
-    max_output=MAX_DURATION)
+# instantiate the neural net(s)
+nets = [
+    TaxiNet(
+        feature_count,
+        learn_rate=0.014 + (0.014 * (random() - 0.5) * 0.4), # decays over time (+- 40%)
+        cuda=False) for _ in range(ENSEMBLE_COUNT)
+    ]
 
-taxi_net.learn_loop(train, loss_column, epochs, batch_size, exclude, 0.5, 25)
+stacked_regressor = TaxiCombinerNet(ENSEMBLE_COUNT, max_output=MAX_DURATION)
+
+# train each neural net
+trained_nets = []
+estimates = []
+_, train_x, _ = next(stacked_regressor.get_batches(train, loss_column, batch_size=train.shape[0], exclude=exclude))
+for ii, net in enumerate(nets):
+    print("Training net {}.".format(ii))
+    net.learn_loop(train, loss_column, epochs, batch_size, exclude,
+                   lr_decay_factor, lr_decay_epoch, cv, early_stopping_rounds)
+    estimate = net.forward(train_x)
+    trained_nets.append(net)
+    estimates.append(estimate.data.numpy())
+
+# arrange the estimates of the ensemble as features into a new design matrix
+estimates.append(train[loss_column].values.reshape(train[loss_column].values.shape[0], 1))
+estimates = np.hstack(estimates)
+estimates = pd.DataFrame(estimates)
+
+# train the stacked model
+print("Training regressor net.")
+stacked_regressor.learn_loop(estimates, ENSEMBLE_COUNT, epochs, batch_size, lr_decay_factor=lr_decay_factor, lr_decay_epoch=lr_decay_epoch)
+
 
 # ==============================================
 # Produce estimates for the test set
 # ==============================================
 
+test_estimates = []
 test = combined[combined['set'] == 'test'] # filter back down to test rows
 test = test.merge(test_street_info, how='left', on='id')
-_, test_x, test_y = next(taxi_net.get_batches(test, loss_column, batch_size=test.shape[0], exclude=exclude))
+_, test_x, test_y = next(stacked_regressor.get_batches(test, loss_column, batch_size=test.shape[0], exclude=exclude))
+for ii, net in enumerate(trained_nets): # TODO : multiprocess
+    print("Evaluating net {}.".format(ii))
+    test_estimate = net.forward(test_x)
+    test_estimates.append(test_estimate.data.numpy())
 
 #taxi_net.eval() # test mode (rolling avg for batchnorm) # only apply for single sample
-test_output = taxi_net(test_x)
+print("Evaluating regressor.")
+test_estimates = Variable(torch.Tensor(np.hstack(test_estimates)))
+test_output = stacked_regressor(test_estimates)
 
-if taxi_net.cuda:
+if stacked_regressor.cuda:
     test[loss_column] = test_output.cpu().numpy()
 else:
     test[loss_column] = test_output.data.numpy()
@@ -164,7 +225,14 @@ else:
 # convert from log space back to linear space for final estimates
 test[loss_column] = np.exp(test[loss_column].values)
 
+test_end_time = datetime.utcnow()
 test_out = test[['id', loss_column]]
-test_out.to_csv('./data/submission_{}.csv'.format(datetime.strftime(datetime.utcnow(),"%Y-%m-%d-%H-%M-%S")), sep = ',', index = None)
-torch.save(taxi_net.state_dict(), './models/submission_{}.nn'.format(datetime.strftime(datetime.utcnow(),"%Y-%m-%d-%H-%M-%S")))
-# TODO
+model_path = \
+    './models/{}_{:.3}'.format(
+        datetime.strftime(test_end_time,"%Y-%m-%d-%H-%M-%S"),
+        stacked_regressor.train_loss.data[0])
+os.mkdir(model_path)
+test_out.to_csv('{}/submission.csv'.format(model_path), sep = ',', index = None)
+torch.save(stacked_regressor.state_dict(), '{}/regressor.nn'.format(model_path))
+for ii, n in enumerate(trained_nets):
+    torch.save(n.state_dict(), '{}/ensemble_{}.nn'.format(model_path, ii))

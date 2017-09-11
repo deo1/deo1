@@ -5,9 +5,9 @@ import torch.autograd
 
 class TaxiCombinerNet(mp.ModulePlus):
     def __init__(self, input_nodes, learn_rate=0.01, cuda=False, max_output=float("inf")):
-        super().__init__()
+        super().__init__(learn_rate=learn_rate, cuda=cuda)
         
-        self.model == nn.Sequential(
+        self.model = nn.Sequential(
             nn.Linear(input_nodes, 1),
             nn.ReLU()
         )
@@ -15,14 +15,15 @@ class TaxiCombinerNet(mp.ModulePlus):
         # initialize weights
         for f in self.model:
             if isinstance(f, torch.nn.modules.linear.Linear):
-                nn.init.kaiming_normal(f.weight)
+                # uniform weighted sum of inputs
+                nn.init.uniform(f.weight, input_nodes**-1, input_nodes**-1)
         
         self.max_output = max_output
         self.loss_function = nn.MSELoss()
         self.optimizer = torch.optim.Adam(self.parameters(), lr=learn_rate)
 
-        def forward(self, x):
-            return torch.clamp(self.model(x), max=self.max_output)
+    def forward(self, x):
+        return torch.clamp(self.model(x), max=self.max_output)
 
 class TaxiNet(mp.ModulePlus):
     def __init__(self, input_nodes, learn_rate=0.01, cuda=False, max_output=float("inf")):
@@ -54,7 +55,6 @@ class TaxiNet(mp.ModulePlus):
             # Layer 5
             nn.Linear(15, 10, bias=False),          # affine
             nn.BatchNorm1d(10),                     # normalize
-            nn.Sigmoid(),
             nn.PReLU(10),                           # adaptive leaky
 
             # Layer 6
