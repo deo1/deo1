@@ -14,7 +14,10 @@ class ModulePlus(nn.Module):
         super().__init__()         
         self.cuda = cuda
         self.learn_rate = learn_rate
-        self.train_loss = None
+        self.train_loss = []
+        self.train_cv_loss = []
+        self.best_cv_loss = None
+        self.state_dicts = []
 
         if cuda:
             self.model = self.model.cuda()
@@ -30,7 +33,7 @@ class ModulePlus(nn.Module):
 
         return loss
 
-    def get_batches(self, df, loss_col, batch_size=32, exclude=[None]):
+    def get_batches(self, df, loss_col, batch_size=32, exclude=[None], cv=False):
         """A generator that returns a training batch (design matrix) in chunks"""
 
         exclude += [loss_col]
@@ -44,10 +47,14 @@ class ModulePlus(nn.Module):
             y = df[loss_col].values[batch:batch + batch_size]
             x, y = torch.Tensor(x), torch.Tensor(y)
 
-            if self.cuda:
+            if self.cuda and not cv:
                 yield idx, Variable(x.cuda()), Variable(y.cuda())
-            else:
+            elif self.cuda and cv:
+                yield idx, Variable(x.cuda(), volatile=True), Variable(y.cuda(), volatile=True)
+            elif not cv:
                 yield idx, Variable(x), Variable(y)
+            else:
+                yield idx, Variable(x, volatile=True), Variable(y, volatile=True)
 
     def learn_loop(self, data, loss_column, epochs, batch_size, exclude=[],
                    lr_decay_factor=0.1, lr_decay_epoch=10, cv = 0.0,
@@ -61,7 +68,6 @@ class ModulePlus(nn.Module):
             train = data
             train_cv = data
 
-        epoch_results = []
         for epoch in range(epochs):
             
             # lower the learning rate as we progress
@@ -77,29 +83,41 @@ class ModulePlus(nn.Module):
                 if chatty > 0: self.print_minibatch_loop(loss.data[0], output, batch_idx, batch_size, train.shape[0], epoch)
     
             # score and train on the whole set to see where we're at
-            epoch_results, stop = self.early_stopping_rounds(epoch_results, train_cv, early_stopping_rounds, loss_column, exclude)
+            stop = self.early_stopping_rounds(train, train_cv, early_stopping_rounds, loss_column, exclude)
             if stop: return epoch
 
             # shuffle the data so that new batches / orders are used in the next epoch
             if randomize: train = train.sample(frac=1).reset_index(drop=True)
 
-    def early_stopping_rounds(self, epoch_results, train_cv, early_stopping_rounds,
+    def early_stopping_rounds(self, train, train_cv, early_stopping_rounds,
                               loss_column, exclude, chatty=1):
 
-            _, train_x, train_y = next(self.get_batches(train_cv, loss_column, batch_size=train_cv.shape[0], exclude=exclude))
+            _, train_x, train_y = next(self.get_batches(train, loss_column, batch_size=train.shape[0], exclude=exclude, cv=True))
+            _, train_cv_x, train_cv_y = next(self.get_batches(train_cv, loss_column, batch_size=train_cv.shape[0], exclude=exclude, cv=True))
+            #self.optimizer.zero_grad()
             out_y = self(train_x)
-            self.train_loss = self.loss_function(out_y, train_y)**0.5
+            out_cv_y = self(train_cv_x)
+            self.train_loss.append((self.loss_function(out_y, train_y)**0.5).data[0])
+            self.train_cv_loss.append((self.loss_function(out_cv_y, train_cv_y)**0.5).data[0])
+            self.state_dicts.append(self.state_dict())
             if chatty > 0:
-                print('\nCV Loss: {:.4f} after {} epochs'.format(self.train_loss.data[0], len(epoch_results)))
+                print('\nTrain Loss: {:.4f}, CV Loss: {:.4f} ({:.4f}) after {} epochs'.format(
+                    self.train_loss[-1],
+                    self.train_cv_loss[-1],
+                    self.train_loss[-1] - self.train_cv_loss[-1],
+                    len(self.train_cv_loss)))
             
-            epoch_results.append(self.train_loss.data[0])
             
-            if (len(epoch_results) >= early_stopping_rounds and
-                epoch_results[-early_stopping_rounds] < self.train_loss.data[0]):
-                print('Early stopping')
-                return epoch_results, True
+            self.best_cv_loss = min(self.train_cv_loss)
+
+            if (len(self.train_cv_loss) >= early_stopping_rounds and
+                self.train_cv_loss[-early_stopping_rounds] < self.train_cv_loss[-1]):
+                print('Early stopping') 
+                best_model = self.state_dicts[self.train_cv_loss.index(self.best_cv_loss)]
+                self.load_state_dict(best_model)
+                return True
             else:
-                return epoch_results, False
+                return False
 
     def lr_scheduler(self, epoch, factor=0.1, lr_decay_epoch=10):
         """Decay learning rate by a factor of `factor` every `lr_decay_epoch` epochs."""

@@ -8,8 +8,7 @@ class TaxiCombinerNet(mp.ModulePlus):
         super().__init__(learn_rate=learn_rate, cuda=cuda)
         
         self.model = nn.Sequential(
-            nn.Linear(input_nodes, 1),
-            nn.ReLU()
+            nn.Linear(input_nodes, 1)
         )
 
         # initialize weights
@@ -23,7 +22,7 @@ class TaxiCombinerNet(mp.ModulePlus):
         self.optimizer = torch.optim.Adam(self.parameters(), lr=learn_rate)
 
     def forward(self, x):
-        return torch.clamp(self.model(x), max=self.max_output)
+        return torch.clamp(self.model(x), max=self.max_output, min=1)
 
 class TaxiNet(mp.ModulePlus):
     def __init__(self, input_nodes, learn_rate=0.01, cuda=False, max_output=float("inf")):
@@ -72,5 +71,4 @@ class TaxiNet(mp.ModulePlus):
         self.optimizer = torch.optim.Adam(self.parameters(), lr=learn_rate)
 
     def forward(self, x):
-        return torch.clamp(self.model(x), max=self.max_output)
-
+        return torch.clamp(self.model(x), max=self.max_output, min=1)

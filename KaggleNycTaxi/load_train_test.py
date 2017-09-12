@@ -18,7 +18,7 @@ from sklearn.cluster import MiniBatchKMeans
 RUN_FEATURE_EXTRACTION = False
 MAX_DISTANCE = 100 * 10**3  # 100 km
 MAX_DURATION = 12 * 60 * 60 # 12 hours
-ENSEMBLE_COUNT = 5
+ENSEMBLE_COUNT = 10
 
 
 # ===============================
@@ -150,19 +150,24 @@ train = combined[combined['set'] == 'train'] # filter back down to train rows
 train = train.merge(train_street_info, how='left', on='id')
 train.dropna(inplace=True) # there was 1 null row introduced by the join
 
+# ==============================================
+# Train XGB model to estimate trip duration
+# ==============================================
+
 
 # ==============================================
 # Train the neural net to estimate trip duration
 # ==============================================
 
-epochs = 100                                 # number of passes across the training data
+epochs = 125                                 # number of passes across the training data
 exclude = ['id', 'set']                      # we won't use these columns for training
 loss_column = 'trip_duration'                # this is what we're trying to predict
 batch_size = 2**13                           # number of samples trained per pass
                                              # (use big batches when using batchnorm)
 lr_decay_factor = 0.5
 lr_decay_epoch = max(1, round(lr_decay_factor * 0.4 * epochs))
-early_stopping_rounds = 10
+early_stopping_rounds = 26
+lr = 0.011
 cv = 0.2
 
 feature_count = len([col for col in train.columns if col not in exclude and col != loss_column])
@@ -171,16 +176,15 @@ feature_count = len([col for col in train.columns if col not in exclude and col 
 nets = [
     TaxiNet(
         feature_count,
-        learn_rate=0.014 + (0.014 * (random() - 0.5) * 0.4), # decays over time (+- 40%)
+        learn_rate=lr + (lr * (random() - 0.5) * 0.4), # decays over time (+- 40%)
         cuda=False) for _ in range(ENSEMBLE_COUNT)
     ]
-
-stacked_regressor = TaxiCombinerNet(ENSEMBLE_COUNT, max_output=MAX_DURATION)
 
 # train each neural net
 trained_nets = []
 estimates = []
-_, train_x, _ = next(stacked_regressor.get_batches(train, loss_column, batch_size=train.shape[0], exclude=exclude))
+_, train_x, _ = next(nets[0].get_batches(train, loss_column, batch_size=train.shape[0], exclude=exclude))
+train_x.volatile=True
 for ii, net in enumerate(nets):
     print("Training net {}.".format(ii))
     net.learn_loop(train, loss_column, epochs, batch_size, exclude,
@@ -190,23 +194,38 @@ for ii, net in enumerate(nets):
     estimates.append(estimate.data.numpy())
 
 # arrange the estimates of the ensemble as features into a new design matrix
+estimates.append(train['pca_manhattan'].values.reshape(train['pca_manhattan'].values.shape[0], 1))
 estimates.append(train[loss_column].values.reshape(train[loss_column].values.shape[0], 1))
-estimates = np.hstack(estimates)
-estimates = pd.DataFrame(estimates)
+new_features = np.hstack(estimates)
+new_features = pd.DataFrame(new_features)
 
 # train the stacked model
 print("Training regressor net.")
-stacked_regressor.learn_loop(estimates, ENSEMBLE_COUNT, epochs, batch_size, lr_decay_factor=lr_decay_factor, lr_decay_epoch=lr_decay_epoch)
+exclude = []
+stacked_regressor = TaxiCombinerNet(new_features.shape[1] - 1, learn_rate=0.004, max_output=MAX_DURATION)
+stacked_regressor.learn_loop(
+    new_features,
+    new_features.shape[1] - 1, # the last column is the loss column
+    epochs,
+    batch_size,
+    exclude=[],
+    lr_decay_factor=lr_decay_factor,
+    lr_decay_epoch=lr_decay_epoch,
+    cv=cv,
+    early_stopping_rounds=early_stopping_rounds)
 
 
 # ==============================================
 # Produce estimates for the test set
 # ==============================================
 
+exclude = ['id', 'set']                      # we won't use these columns for training
 test_estimates = []
 test = combined[combined['set'] == 'test'] # filter back down to test rows
 test = test.merge(test_street_info, how='left', on='id')
 _, test_x, test_y = next(stacked_regressor.get_batches(test, loss_column, batch_size=test.shape[0], exclude=exclude))
+test_x.volatile = True
+test_y.volatile = True
 for ii, net in enumerate(trained_nets): # TODO : multiprocess
     print("Evaluating net {}.".format(ii))
     test_estimate = net.forward(test_x)
@@ -214,7 +233,10 @@ for ii, net in enumerate(trained_nets): # TODO : multiprocess
 
 #taxi_net.eval() # test mode (rolling avg for batchnorm) # only apply for single sample
 print("Evaluating regressor.")
-test_estimates = Variable(torch.Tensor(np.hstack(test_estimates)))
+test_estimates = np.hstack(test_estimates)
+pca = np.stack(test[['pca_manhattan']].values)
+test_estimates = Variable(torch.Tensor(np.hstack([test_estimates, pca])), volatile=True)
+exclude = []
 test_output = stacked_regressor(test_estimates)
 
 if stacked_regressor.cuda:
@@ -230,7 +252,7 @@ test_out = test[['id', loss_column]]
 model_path = \
     './models/{}_{:.3}'.format(
         datetime.strftime(test_end_time,"%Y-%m-%d-%H-%M-%S"),
-        stacked_regressor.train_loss.data[0])
+        stacked_regressor.best_cv_loss)
 os.mkdir(model_path)
 test_out.to_csv('{}/submission.csv'.format(model_path), sep = ',', index = None)
 torch.save(stacked_regressor.state_dict(), '{}/regressor.nn'.format(model_path))
