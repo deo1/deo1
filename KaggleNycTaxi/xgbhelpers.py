@@ -1,6 +1,6 @@
 import pandas as pd
 
-def get_params(self, algorithm, ptype, ver):
+def get_params(algorithm, ptype, ver):
     import params as p
 
     if algorithm == 'xgb':
@@ -23,9 +23,9 @@ def get_params(self, algorithm, ptype, ver):
 
     return param
 
-def fit_model(self, alg, df, features, loss, useTrainCV=True, folds=5,
-                  early_stopping_rounds=100, metrics='mae',
-                  chatty=1, show_report=False):
+def fit_model(alg, df, features, loss, useTrainCV=True, folds=5,
+              early_stopping_rounds=100, metrics='mae',
+              chatty=1, show_report=False):
     import xgboost as xgb # http://xgboost.readthedocs.io/en/latest/python/python_intro.html
     import operator
 
@@ -69,3 +69,14 @@ def fit_model(self, alg, df, features, loss, useTrainCV=True, folds=5,
     importance['relative'] = importance['fscore'] / importance['fscore'].sum()
 
     return alg, importance
+
+def save_model(alg, path):
+    import xgboost as xgb
+
+    # works whether you were using the sklearn api or the raw xgboost api
+    if isinstance(alg, xgb.sklearn.XGBClassifier) or isinstance(alg, xgb.sklearn.XGBRegressor):
+        alg._Booster.save_model(path)
+    elif isinstance(alg, xgb.core.Booster):
+        alg.save_model(path)
+    else:
+        raise TypeError("Method Data.save_model() : invalid model type {}".format(type(alg)))

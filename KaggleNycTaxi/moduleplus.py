@@ -94,7 +94,6 @@ class ModulePlus(nn.Module):
 
             _, train_x, train_y = next(self.get_batches(train, loss_column, batch_size=train.shape[0], exclude=exclude, cv=True))
             _, train_cv_x, train_cv_y = next(self.get_batches(train_cv, loss_column, batch_size=train_cv.shape[0], exclude=exclude, cv=True))
-            #self.optimizer.zero_grad()
             out_y = self(train_x)
             out_cv_y = self(train_cv_x)
             self.train_loss.append((self.loss_function(out_y, train_y)**0.5).data[0])
@@ -106,7 +105,6 @@ class ModulePlus(nn.Module):
                     self.train_cv_loss[-1],
                     self.train_loss[-1] - self.train_cv_loss[-1],
                     len(self.train_cv_loss)))
-            
             
             self.best_cv_loss = min(self.train_cv_loss)
 

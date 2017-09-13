@@ -1,6 +1,7 @@
 # reference: https://www.kaggle.com/c/nyc-taxi-trip-duration
 # reference: http://www.faqs.org/faqs/ai-faq/neural-nets/part1/preamble.html
 # reference: https://www.kaggle.com/mathijs/weather-data-in-new-york-city-2016
+# reference: https://www.kaggle.com/oscarleo/new-york-city-taxi-with-osrm/data
 # feature analysis: https://www.kaggle.com/headsortails/nyc-taxi-eda-update-the-fast-the-curious
 import os
 from taxinet import TaxiNet, TaxiCombinerNet
@@ -13,12 +14,14 @@ from torch.autograd import Variable
 from random import random
 from sklearn.decomposition import PCA
 from sklearn.cluster import MiniBatchKMeans
+import xgbhelpers as h
+import xgboost as xgb
 
 # TODO args feature
 RUN_FEATURE_EXTRACTION = False
 MAX_DISTANCE = 100 * 10**3  # 100 km
 MAX_DURATION = 12 * 60 * 60 # 12 hours
-ENSEMBLE_COUNT = 10
+ENSEMBLE_COUNT = 3
 
 
 # ===============================
@@ -107,31 +110,31 @@ if (RUN_FEATURE_EXTRACTION):
         ((combined['set'] == 'train') &
          (combined['crows_distance'] <= MAX_DISTANCE) &
          (combined['trip_duration'] <= MAX_DURATION))]
+
+    # PCA looks pointless, but who knows.
+    coords = np.vstack((combined[['pickup_latitude', 'pickup_longitude']].values,
+                        combined[['dropoff_latitude', 'dropoff_longitude']].values))
     
+    pca = PCA().fit(coords)
+    combined['pickup_pca0'] = pca.transform(combined[['pickup_latitude', 'pickup_longitude']])[:, 0]
+    combined['pickup_pca1'] = pca.transform(combined[['pickup_latitude', 'pickup_longitude']])[:, 1]
+    combined['dropoff_pca0'] = pca.transform(combined[['dropoff_latitude', 'dropoff_longitude']])[:, 0]
+    combined['dropoff_pca1'] = pca.transform(combined[['dropoff_latitude', 'dropoff_longitude']])[:, 1]
+    combined['pca_manhattan'] = \
+        np.abs(combined['dropoff_pca1'] - combined['pickup_pca1']) + \
+        np.abs(combined['dropoff_pca0'] - combined['pickup_pca0'])
+    
+    # cluster the lat/lon using KMeans
+    sample_ind = np.random.permutation(len(coords))[:500000]
+    kmeans = MiniBatchKMeans(n_clusters=100, batch_size=10000).fit(coords[sample_ind])
+    combined['pickup_cluster'] = kmeans.predict(combined[['pickup_latitude', 'pickup_longitude']])
+    combined['dropoff_cluster'] = kmeans.predict(combined[['dropoff_latitude', 'dropoff_longitude']])
+
     combined.to_csv('./data/combined.csv', sep=',', index=None)
 
 else:
     # already done pre=processing
     combined = pd.read_csv('./data/combined.csv')
-
-# PCA looks pointless, but who knows.
-coords = np.vstack((combined[['pickup_latitude', 'pickup_longitude']].values,
-                    combined[['dropoff_latitude', 'dropoff_longitude']].values))
-
-pca = PCA().fit(coords)
-combined['pickup_pca0'] = pca.transform(combined[['pickup_latitude', 'pickup_longitude']])[:, 0]
-combined['pickup_pca1'] = pca.transform(combined[['pickup_latitude', 'pickup_longitude']])[:, 1]
-combined['dropoff_pca0'] = pca.transform(combined[['dropoff_latitude', 'dropoff_longitude']])[:, 0]
-combined['dropoff_pca1'] = pca.transform(combined[['dropoff_latitude', 'dropoff_longitude']])[:, 1]
-combined['pca_manhattan'] = \
-    np.abs(combined['dropoff_pca1'] - combined['pickup_pca1']) + \
-    np.abs(combined['dropoff_pca0'] - combined['pickup_pca0'])
-
-# cluster the lat/lon using KMeans
-sample_ind = np.random.permutation(len(coords))[:500000]
-kmeans = MiniBatchKMeans(n_clusters=100, batch_size=10000).fit(coords[sample_ind])
-combined['pickup_cluster'] = kmeans.predict(combined[['pickup_latitude', 'pickup_longitude']])
-combined['dropoff_cluster'] = kmeans.predict(combined[['dropoff_latitude', 'dropoff_longitude']])
 
 # take the log of the measure. this'll give a normal distribution as well as
 # allow us to use RMSE as the loss function instead of RMSLE on the original
@@ -154,23 +157,57 @@ train.dropna(inplace=True) # there was 1 null row introduced by the join
 # Train XGB model to estimate trip duration
 # ==============================================
 
+exclude = ['id', 'set']                      # we won't use these columns for training
+loss_column = 'trip_duration'                # this is what we're trying to predict
+features = [col for col in train.columns if col not in exclude and col != loss_column]
+
+print('\nTraining and scoring XGBoost...')
+baseline_params = h.get_params(algorithm='xgb', ptype='start', ver=3)
+#alg = xgb.XGBClassifier( **baseline_params )
+alg = xgb.XGBRegressor( **baseline_params )
+
+# tune the model
+xgb_model, importance = \
+    h.fit_model(
+        alg,
+        train,
+        features=features,
+        loss=loss_column,
+        useTrainCV=True,
+        folds=5,
+        metrics=['rmse'],
+        chatty=2,
+        show_report=True)
+
+
+# ==============================================
+# Produce estimates for XGB
+# ==============================================
+
+X = train[features]
+if hasattr(xgb_model, 'best_ntree_limit'):
+    xgb_ytmp = xgb_model.predict(X, ntree_limit=xgb_model.best_ntree_limit)
+else:
+    xgb_ytmp = xgb_model.predict(X)
+
+# reshape for tensor input
+xgb_ytmp = xgb_ytmp.reshape(xgb_ytmp.shape[0], 1)
+
 
 # ==============================================
 # Train the neural net to estimate trip duration
 # ==============================================
 
 epochs = 125                                 # number of passes across the training data
-exclude = ['id', 'set']                      # we won't use these columns for training
-loss_column = 'trip_duration'                # this is what we're trying to predict
 batch_size = 2**13                           # number of samples trained per pass
                                              # (use big batches when using batchnorm)
 lr_decay_factor = 0.5
 lr_decay_epoch = max(1, round(lr_decay_factor * 0.4 * epochs))
 early_stopping_rounds = 26
-lr = 0.011
+lr = 0.013
 cv = 0.2
 
-feature_count = len([col for col in train.columns if col not in exclude and col != loss_column])
+feature_count = len(features)
 
 # instantiate the neural net(s)
 nets = [
@@ -194,7 +231,7 @@ for ii, net in enumerate(nets):
     estimates.append(estimate.data.numpy())
 
 # arrange the estimates of the ensemble as features into a new design matrix
-estimates.append(train['pca_manhattan'].values.reshape(train['pca_manhattan'].values.shape[0], 1))
+estimates.append(xgb_ytmp)
 estimates.append(train[loss_column].values.reshape(train[loss_column].values.shape[0], 1))
 new_features = np.hstack(estimates)
 new_features = pd.DataFrame(new_features)
@@ -202,10 +239,13 @@ new_features = pd.DataFrame(new_features)
 # train the stacked model
 print("Training regressor net.")
 exclude = []
-stacked_regressor = TaxiCombinerNet(new_features.shape[1] - 1, learn_rate=0.004, max_output=MAX_DURATION)
+
+# the stacked regressor will have the N neural nets + the XGB model as input
+stacked_feature_count = (new_features.shape[1] - 1)
+stacked_regressor = TaxiCombinerNet(stacked_feature_count, learn_rate=0.004, max_output=MAX_DURATION)
 stacked_regressor.learn_loop(
     new_features,
-    new_features.shape[1] - 1, # the last column is the loss column
+    stacked_feature_count, # the last column is the loss column
     epochs,
     batch_size,
     exclude=[],
@@ -223,6 +263,7 @@ exclude = ['id', 'set']                      # we won't use these columns for tr
 test_estimates = []
 test = combined[combined['set'] == 'test'] # filter back down to test rows
 test = test.merge(test_street_info, how='left', on='id')
+
 _, test_x, test_y = next(stacked_regressor.get_batches(test, loss_column, batch_size=test.shape[0], exclude=exclude))
 test_x.volatile = True
 test_y.volatile = True
@@ -231,11 +272,21 @@ for ii, net in enumerate(trained_nets): # TODO : multiprocess
     test_estimate = net.forward(test_x)
     test_estimates.append(test_estimate.data.numpy())
 
-#taxi_net.eval() # test mode (rolling avg for batchnorm) # only apply for single sample
+# predict model (check for early stopping rounds)
+print('Evaluating XGB.')
+X = test[features]
+if hasattr(xgb_model, 'best_ntree_limit'):
+    xgb_ytmp = xgb_model.predict(X, ntree_limit=xgb_model.best_ntree_limit)
+else:
+    xgb_ytmp = xgb_model.predict(X)
+
+# reshape for tensor input
+xgb_ytmp = xgb_ytmp.reshape(xgb_ytmp.shape[0], 1)
+test_estimates.append(xgb_ytmp)
+
 print("Evaluating regressor.")
 test_estimates = np.hstack(test_estimates)
-pca = np.stack(test[['pca_manhattan']].values)
-test_estimates = Variable(torch.Tensor(np.hstack([test_estimates, pca])), volatile=True)
+test_estimates = Variable(torch.Tensor(test_estimates), volatile=True)
 exclude = []
 test_output = stacked_regressor(test_estimates)
 
@@ -246,15 +297,20 @@ else:
 
 # convert from log space back to linear space for final estimates
 test[loss_column] = np.exp(test[loss_column].values)
-
+test['trip_duration_xgb'] = np.exp(test_estimates.data.numpy()[:,3].reshape(test_estimates.data.shape[0], 1))
 test_end_time = datetime.utcnow()
 test_out = test[['id', loss_column]]
+test_out_xgb = test[['id', 'trip_duration_xgb']]
+test_out_xgb.columns = ['id', 'trip_duration']
 model_path = \
     './models/{}_{:.3}'.format(
         datetime.strftime(test_end_time,"%Y-%m-%d-%H-%M-%S"),
         stacked_regressor.best_cv_loss)
 os.mkdir(model_path)
-test_out.to_csv('{}/submission.csv'.format(model_path), sep = ',', index = None)
+test_out.to_csv('{}/submission.csv'.format(model_path), sep=',', index=None)
 torch.save(stacked_regressor.state_dict(), '{}/regressor.nn'.format(model_path))
 for ii, n in enumerate(trained_nets):
     torch.save(n.state_dict(), '{}/ensemble_{}.nn'.format(model_path, ii))
+
+# save the XGB model and a standalone model submission
+h.save_model(xgb_model, '{}/xgb.model'.format(model_path))

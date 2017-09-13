@@ -14,7 +14,8 @@ class TaxiCombinerNet(mp.ModulePlus):
         # initialize weights
         for f in self.model:
             if isinstance(f, torch.nn.modules.linear.Linear):
-                # uniform weighted sum of inputs
+                # start with uniform weighted sum of inputs since this is a
+                # regressor of optimal-ish estimates
                 nn.init.uniform(f.weight, input_nodes**-1, input_nodes**-1)
         
         self.max_output = max_output
