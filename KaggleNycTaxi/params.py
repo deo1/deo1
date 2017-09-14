@@ -46,7 +46,7 @@ class Xgbparams2(dict): # useful for tuning
 class Xgbparams3(dict): # useful for final run
 
     __alpha = 30 # rate inversely proportional to number of rounds
-    __n_estimators = 2500 # num_boosting_rounds
+    __n_estimators = 2000 # num_boosting_rounds
     __learning_rate = min(1, max(0.1, __alpha / __n_estimators)) # step size
 
     def __init__(self):
@@ -54,9 +54,9 @@ class Xgbparams3(dict): # useful for final run
         self['learning_rate'] = self.__learning_rate
         self['gamma'] = 0.1
         self['min_child_weight'] = 4.2922
-        self['colsample_bytree'] = 0.7
-        self['subsample'] = 0.9
-        self['max_depth'] = 8
+        self['colsample_bytree'] = 0.5
+        self['subsample'] = 0.8
+        self['max_depth'] = 6
         self['max_delta_step'] = 0
         self['silent'] = 0
         self['n_estimators'] = self.__n_estimators

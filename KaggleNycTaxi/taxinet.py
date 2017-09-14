@@ -33,32 +33,52 @@ class TaxiNet(mp.ModulePlus):
         # TODO: convolutional layers on the coordinates
         self.model = nn.Sequential(
             # Layer 1
-            nn.Linear(input_nodes, 50, bias=False), # affine (bias redundant with beta term in batchnorm)
-            nn.BatchNorm1d(50),                     # normalize mean/variance
-            nn.PReLU(50),                           # adaptive leaky
+            nn.Linear(input_nodes, 100, bias=False), # affine (bias redundant with beta term in batchnorm)
+            nn.BatchNorm1d(100),                     # normalize mean/variance
+            nn.PReLU(100),                           # adaptive leaky
             
             # Layer 2
-            nn.Linear(50, 30, bias=False),          # affine
+            nn.Linear(100, 75, bias=False),         # affine
+            nn.BatchNorm1d(75),                     # normalize
+            nn.PReLU(75),                           # adaptive leaky
+
+            # Layer 3
+            nn.Linear(75, 69, bias=False),          # affine
+            nn.BatchNorm1d(69),                     # normalize
+            nn.PReLU(69),                           # adaptive leaky
+
+            # Layer 4
+            nn.Linear(69, 50, bias=False),          # affine
+            nn.BatchNorm1d(50),                     # normalize
+            nn.PReLU(50),                           # adaptive leaky
+
+            # Layer 5
+            nn.Linear(50, 40, bias=False),          # affine
+            nn.BatchNorm1d(40),                     # normalize
+            nn.PReLU(40),                           # adaptive leaky
+
+            # Layer 6
+            nn.Linear(40, 30, bias=False),          # affine
             nn.BatchNorm1d(30),                     # normalize
             nn.PReLU(30),                           # adaptive leaky
 
-            # Layer 3
-            nn.Linear(30, 20, bias=False),          # affine
+            # Layer 7
+            nn.Linear(30, 25, bias=False),          # affine
+            nn.BatchNorm1d(25),                     # normalize
+            nn.PReLU(25),                           # adaptive leaky
+
+            # Layer 8
+            nn.Linear(25, 20, bias=False),          # affine
             nn.BatchNorm1d(20),                     # normalize
             nn.PReLU(20),                           # adaptive leaky
 
-            # Layer 4
+            # Layer 9
             nn.Linear(20, 15, bias=False),          # affine
             nn.BatchNorm1d(15),                     # normalize
             nn.PReLU(15),                           # adaptive leaky
 
-            # Layer 5
-            nn.Linear(15, 10, bias=False),          # affine
-            nn.BatchNorm1d(10),                     # normalize
-            nn.PReLU(10),                           # adaptive leaky
-
-            # Layer 6
-            nn.Linear(10, 1),                       # affine
+            # Layer 10
+            nn.Linear(15, 1),                       # affine
             nn.ReLU()                               # final output is [0, oo)
         )
 

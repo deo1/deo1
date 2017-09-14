@@ -21,7 +21,7 @@ import xgboost as xgb
 RUN_FEATURE_EXTRACTION = False
 MAX_DISTANCE = 100 * 10**3  # 100 km
 MAX_DURATION = 12 * 60 * 60 # 12 hours
-ENSEMBLE_COUNT = 3
+ENSEMBLE_COUNT = 2
 
 
 # ===============================
@@ -198,8 +198,8 @@ xgb_ytmp = xgb_ytmp.reshape(xgb_ytmp.shape[0], 1)
 # Train the neural net to estimate trip duration
 # ==============================================
 
-epochs = 125                                 # number of passes across the training data
-batch_size = 2**13                           # number of samples trained per pass
+epochs = 10                                  # number of passes across the training data
+batch_size = 2**9                            # number of samples trained per pass
                                              # (use big batches when using batchnorm)
 lr_decay_factor = 0.5
 lr_decay_epoch = max(1, round(lr_decay_factor * 0.4 * epochs))
@@ -232,6 +232,7 @@ for ii, net in enumerate(nets):
 
 # arrange the estimates of the ensemble as features into a new design matrix
 estimates.append(xgb_ytmp)
+estimates.append(train['crows_distance'].values.reshape(train['crows_distance'].values.shape[0], 1))
 estimates.append(train[loss_column].values.reshape(train[loss_column].values.shape[0], 1))
 new_features = np.hstack(estimates)
 new_features = pd.DataFrame(new_features)
@@ -283,6 +284,7 @@ else:
 # reshape for tensor input
 xgb_ytmp = xgb_ytmp.reshape(xgb_ytmp.shape[0], 1)
 test_estimates.append(xgb_ytmp)
+test_estimates.append(test['crows_distance'].values.reshape(test['crows_distance'].values.shape[0], 1))
 
 print("Evaluating regressor.")
 test_estimates = np.hstack(test_estimates)
@@ -308,6 +310,7 @@ model_path = \
         stacked_regressor.best_cv_loss)
 os.mkdir(model_path)
 test_out.to_csv('{}/submission.csv'.format(model_path), sep=',', index=None)
+test_out_xgb.to_csv('{}/submission_xgbonly.csv'.format(model_path), sep=',', index=None)
 torch.save(stacked_regressor.state_dict(), '{}/regressor.nn'.format(model_path))
 for ii, n in enumerate(trained_nets):
     torch.save(n.state_dict(), '{}/ensemble_{}.nn'.format(model_path, ii))

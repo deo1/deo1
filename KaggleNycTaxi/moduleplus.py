@@ -4,6 +4,7 @@ import torch.autograd
 from torch.autograd import Variable
 import numpy as np
 from sklearn.model_selection import train_test_split
+import copy
 
 class ModulePlus(nn.Module):
     """
@@ -94,8 +95,16 @@ class ModulePlus(nn.Module):
 
             _, train_x, train_y = next(self.get_batches(train, loss_column, batch_size=train.shape[0], exclude=exclude, cv=True))
             _, train_cv_x, train_cv_y = next(self.get_batches(train_cv, loss_column, batch_size=train_cv.shape[0], exclude=exclude, cv=True))
-            out_y = self(train_x)
-            out_cv_y = self(train_cv_x)
+            
+            # deepcopy the model to ensure that no gradient data is
+            # influenced by the cv set (i didn't trust volatile)
+            copied_model = copy.deepcopy(self.model)
+            out_y = copied_model(train_x)
+            out_cv_y = copied_model(train_cv_x)
+            del copied_model
+            
+            # score the cv and train sets, and stop early if stabilized, saving
+            # the model that performed best on the cv set
             self.train_loss.append((self.loss_function(out_y, train_y)**0.5).data[0])
             self.train_cv_loss.append((self.loss_function(out_cv_y, train_cv_y)**0.5).data[0])
             self.state_dicts.append(self.state_dict())
