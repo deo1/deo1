@@ -8,7 +8,10 @@ class TaxiCombinerNet(mp.ModulePlus):
         super().__init__(learn_rate=learn_rate, cuda=cuda)
         
         self.model = nn.Sequential(
-            nn.Linear(input_nodes, 1)
+            nn.Linear(input_nodes, 10),
+            nn.PReLU(10),
+            nn.Linear(10, 1),
+            nn.ReLU()
         )
 
         # initialize weights

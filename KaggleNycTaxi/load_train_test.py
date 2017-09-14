@@ -198,11 +198,11 @@ xgb_ytmp = xgb_ytmp.reshape(xgb_ytmp.shape[0], 1)
 # Train the neural net to estimate trip duration
 # ==============================================
 
-epochs = 10                                  # number of passes across the training data
+epochs = 20                                  # number of passes across the training data
 batch_size = 2**9                            # number of samples trained per pass
                                              # (use big batches when using batchnorm)
 lr_decay_factor = 0.5
-lr_decay_epoch = max(1, round(lr_decay_factor * 0.4 * epochs))
+lr_decay_epoch = max(1, round(lr_decay_factor * 0.6 * epochs))
 early_stopping_rounds = 26
 lr = 0.013
 cv = 0.2
