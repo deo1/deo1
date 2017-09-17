@@ -14,12 +14,14 @@ MODELS_PATH = "./models/"
 TRAIN_PATH = DATA_PATH + "train.csv"
 TEST_PATH = DATA_PATH + "test.csv"
 LOSS = 'Survived'
+ID = 'PassengerId'
 CATEGORICAL = [np.object_]
 START_TIME = datetime.utcnow()
-N_JOBS = multiprocessing.cpu_count() // 2 + 1
+N_JOBS = round(0.75 * multiprocessing.cpu_count())
+N_JOBS = 1 # multiprocessing is broken
 
 # loss, meta, and high cardinality columns
-IGNORE = ['set', 'PassengerId', LOSS, 'Name', 'Ticket']
+IGNORE = ['set', ID, LOSS, 'Name', 'Ticket']
 
 
 # =============================================================================
@@ -73,6 +75,7 @@ model = tp.TPOTClassifier(
     config_dict=config_dict)
 model.fit(X_train, y_train)
 score = model.score(X_train, y_train)
+print(score)
 
 
 # =============================================================================
@@ -84,8 +87,9 @@ y_test = model.predict(X_test)
 # =============================================================================
 # Output model and prediction in submission format
 # =============================================================================
-passenger_id = combined[combined['set'] == 'test']['PassengerId'].values
-submission = pd.DataFrame({'PassengerId': passenger_id, LOSS: y_test})
+passenger_id = combined[combined['set'] == 'test'][ID].values
+submission = pd.DataFrame({ID: passenger_id, LOSS: y_test})
+submission[LOSS] = submission[LOSS].apply(lambda y: int(y))
 tag = "{}-{:0.4}".format(START_TIME.strftime("%Y_%m_%d_%H_%M_%S"), score)
 submission_path = DATA_PATH + "submission_{}.csv".format(tag)
 model_path = MODELS_PATH + "model_{}.py".format(tag)
