@@ -41,15 +41,15 @@ classifier_config_dict = {
         'bootstrap': [True, False]
     },
 
-#    'sklearn.ensemble.GradientBoostingClassifier': {
-#        'n_estimators': [100],
-#        'learning_rate': [1e-3, 1e-2, 1e-1, 0.5, 1.],
-#        'max_depth': range(1, 11),
-#        'min_samples_split': range(2, 21),
-#        'min_samples_leaf': range(1, 21),
-#        'subsample': np.arange(0.05, 1.01, 0.05),
-#        'max_features': np.arange(0.05, 1.01, 0.05)
-#    },
+    'sklearn.ensemble.GradientBoostingClassifier': {
+        'n_estimators': [100],
+        'learning_rate': [1e-3, 1e-2, 1e-1, 0.5, 1.],
+        'max_depth': range(1, 11),
+        'min_samples_split': range(2, 21),
+        'min_samples_leaf': range(1, 21),
+        'subsample': np.arange(0.05, 1.01, 0.05),
+        'max_features': np.arange(0.05, 1.01, 0.05)
+    },
 
     'sklearn.neighbors.KNeighborsClassifier': {
         'n_neighbors': range(1, 101),

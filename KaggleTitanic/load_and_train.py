@@ -5,6 +5,7 @@ from sklearn import preprocessing
 import numpy as np
 from datetime import datetime
 import multiprocessing
+import re
 
 # =============================================================================
 # Constants
@@ -13,6 +14,7 @@ DATA_PATH = "./data/"
 MODELS_PATH = "./models/"
 TRAIN_PATH = DATA_PATH + "train.csv"
 TEST_PATH = DATA_PATH + "test.csv"
+UNKNOWN = '(unknown)'
 LOSS = 'Survived'
 ID = 'PassengerId'
 CATEGORICAL = [np.object_]
@@ -32,6 +34,25 @@ test = pd.read_csv(TEST_PATH)
 train['set'] = 'train'
 test['set'] = 'test'
 combined = pd.concat([train, test])
+
+# do some preliminary feature engineering
+title_regex = '([A-Za-z]+)\.'
+surname_regex = '([A-Za-z]+)\,'
+deck_regex = '([A-Z]+)'
+ticket_regex = '([A-Z\/\.]+)'
+get_title = lambda n: re.search(title_regex, n).group(0)[:-1]
+get_surname = lambda n: re.search(surname_regex, n).group(0)[:-1]
+get_deck = lambda c: re.search(deck_regex, c).group(0) if c == c else UNKNOWN
+get_ticket = lambda t: \
+    re.search(ticket_regex, t).group(0).replace('/', '').replace('.', '') \
+    if re.search(deck_regex, t) != None else UNKNOWN
+combined['Title'] = combined['Name'].apply(lambda n: get_title(n))
+combined['Surname'] = combined['Name'].apply(lambda n: get_surname(n))
+surnames = combined['Surname'].value_counts()
+combined['FamilySize'] = combined['Surname'].apply(lambda s: surnames[s])
+combined['Deck'] = combined['Cabin'].apply(lambda c: get_deck(c))
+combined['TicketLoc'] = combined['Ticket'].apply(lambda t: get_ticket(t))
+
 features = [col for col in combined.columns if col not in IGNORE]
 types = combined[features].dtypes
 
@@ -41,7 +62,7 @@ for col in features:
     is_categorical = any([types[col].type == cat for cat in CATEGORICAL])
     if is_categorical:
         # fill missing values with a keyword
-        combined[col].fillna('(unknown)', inplace=True)
+        combined[col].fillna(UNKNOWN, inplace=True)
         
         # encode as integers
         le = preprocessing.LabelEncoder()
