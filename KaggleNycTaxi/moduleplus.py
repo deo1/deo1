@@ -116,12 +116,13 @@ class ModulePlus(nn.Module):
                     len(self.train_cv_loss)))
             
             self.best_cv_loss = min(self.train_cv_loss)
-
+            best_model = self.state_dicts[self.train_cv_loss.index(self.best_cv_loss)]
+            self.load_state_dict(best_model)
+                
             if (len(self.train_cv_loss) >= early_stopping_rounds and
                 self.train_cv_loss[-early_stopping_rounds] < self.train_cv_loss[-1]):
                 print('Early stopping') 
-                best_model = self.state_dicts[self.train_cv_loss.index(self.best_cv_loss)]
-                self.load_state_dict(best_model)
+
                 return True
             else:
                 return False

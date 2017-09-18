@@ -20,7 +20,7 @@ import xgboost as xgb
 # TODO args feature
 RUN_FEATURE_EXTRACTION = False
 MAX_DISTANCE = 100 * 10**3  # 100 km
-MAX_DURATION = 12 * 60 * 60 # 12 hours
+MAX_DURATION = 24 * 60 * 60 # 24 hours
 ENSEMBLE_COUNT = 2
 
 
@@ -198,14 +198,14 @@ xgb_ytmp = xgb_ytmp.reshape(xgb_ytmp.shape[0], 1)
 # Train the neural net to estimate trip duration
 # ==============================================
 
-epochs = 20                                  # number of passes across the training data
+epochs = 40                                  # number of passes across the training data
 batch_size = 2**9                            # number of samples trained per pass
                                              # (use big batches when using batchnorm)
 lr_decay_factor = 0.5
 lr_decay_epoch = max(1, round(lr_decay_factor * 0.6 * epochs))
 early_stopping_rounds = 26
 lr = 0.013
-cv = 0.2
+cv = 0.1
 
 feature_count = len(features)
 
@@ -214,7 +214,8 @@ nets = [
     TaxiNet(
         feature_count,
         learn_rate=lr + (lr * (random() - 0.5) * 0.4), # decays over time (+- 40%)
-        cuda=False) for _ in range(ENSEMBLE_COUNT)
+        cuda=False,
+        max_output=MAX_DURATION) for _ in range(ENSEMBLE_COUNT)
     ]
 
 # train each neural net
@@ -299,7 +300,7 @@ else:
 
 # convert from log space back to linear space for final estimates
 test[loss_column] = np.exp(test[loss_column].values)
-test['trip_duration_xgb'] = np.exp(test_estimates.data.numpy()[:,3].reshape(test_estimates.data.shape[0], 1))
+test['trip_duration_xgb'] = np.exp(test_estimates.data.numpy()[:,2].reshape(test_estimates.data.shape[0], 1))
 test_end_time = datetime.utcnow()
 test_out = test[['id', loss_column]]
 test_out_xgb = test[['id', 'trip_duration_xgb']]
