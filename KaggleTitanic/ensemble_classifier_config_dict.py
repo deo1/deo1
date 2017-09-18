@@ -16,24 +16,24 @@ classifier_config_dict = {
         'fit_prior': [True, False]
     },
 
-    'sklearn.tree.DecisionTreeClassifier': {
-        'criterion': ["gini", "entropy"],
-        'max_depth': range(1, 6),
-        'min_samples_split': range(2, 21),
-        'min_samples_leaf': range(1, 21)
-    },
+#    'sklearn.tree.DecisionTreeClassifier': {
+#        'criterion': ["gini", "entropy"],
+#        'max_depth': range(1, 4),
+#        'min_samples_split': range(2, 21),
+#        'min_samples_leaf': range(1, 21)
+#    },
 
-    'sklearn.ensemble.ExtraTreesClassifier': {
-        'n_estimators': [50],
-        'criterion': ["gini", "entropy"],
-        'max_features': np.arange(0.05, 1.01, 0.05),
-        'min_samples_split': range(2, 21),
-        'min_samples_leaf': range(1, 21),
-        'bootstrap': [True, False]
-    },
+#    'sklearn.ensemble.ExtraTreesClassifier': {
+#        'n_estimators': [40],
+#        'criterion': ["gini", "entropy"],
+#        'max_features': np.arange(0.05, 1.01, 0.05),
+#        'min_samples_split': range(5, 21),
+#        'min_samples_leaf': range(5, 21),
+#        'bootstrap': [True, False]
+#    },
 
     'sklearn.ensemble.RandomForestClassifier': {
-        'n_estimators': [50],
+        'n_estimators': [40],
         'criterion': ["gini", "entropy"],
         'max_features': np.arange(0.05, 1.01, 0.05),
         'min_samples_split': range(2, 21),
@@ -41,15 +41,15 @@ classifier_config_dict = {
         'bootstrap': [True, False]
     },
 
-    'sklearn.ensemble.GradientBoostingClassifier': {
-        'n_estimators': [50],
-        'learning_rate': [1e-3, 1e-2, 1e-1, 0.5, 1.],
-        'max_depth': range(1, 6),
-        'min_samples_split': range(2, 21),
-        'min_samples_leaf': range(1, 21),
-        'subsample': np.arange(0.05, 1.01, 0.05),
-        'max_features': np.arange(0.05, 1.01, 0.05)
-    },
+#    'sklearn.ensemble.GradientBoostingClassifier': {
+#        'n_estimators': [50],
+#        'learning_rate': [1e-3, 1e-2, 1e-1, 0.5, 1.],
+#        'max_depth': range(1, 4),
+#        'min_samples_split': range(2, 21),
+#        'min_samples_leaf': range(1, 21),
+#        'subsample': np.arange(0.05, 1.01, 0.05),
+#        'max_features': np.arange(0.05, 1.01, 0.05)
+#    },
 
     'sklearn.neighbors.KNeighborsClassifier': {
         'n_neighbors': range(1, 101),

@@ -1,3 +1,4 @@
+#https://www.kaggle.com/c/titanic/data
 import pandas as pd
 import tpot as tp
 import custom_classifier_config_dict as cccd
@@ -8,6 +9,8 @@ import numpy as np
 from datetime import datetime
 import multiprocessing
 import re
+import xgbhelpers as h
+import xgboost as xgb
 
 # =============================================================================
 # Constants
@@ -122,19 +125,24 @@ new_features = pd.DataFrame(
 for col in new_features.columns:
     X_train[col] = new_features[col]
 
-# train the stacked model on all classifiers
-print('\nTraining stacked model...')
-stacked_model = tp.TPOTClassifier(
-    generations=15,
-    population_size=15,
-    cv=5,
-    verbosity=2,
-    n_jobs=N_JOBS,
-    config_dict=config_dict)
 
-stacked_model.fit(X_train, y_train)
-score = stacked_model.score(X_train, y_train)
-print(score)
+# train the stacked model on all classifiers
+print('\nTraining stacked XGBoost model...')
+baseline_params = h.get_params(algorithm='xgb', ptype='start', ver=2)
+alg = xgb.XGBClassifier( **baseline_params )
+#alg = xgb.XGBRegressor( **baseline_params )
+
+# tune the model
+xgb_model, importance = \
+    h.fit_model(
+        alg,
+        X_train,
+        y_train,
+        useTrainCV=True,
+        folds=5,
+        metrics=['map','error'],
+        chatty=2,
+        show_report=True)
 
 # =============================================================================
 # Predict survival on test set
@@ -155,7 +163,10 @@ for col in new_features.columns:
 
 # predict y_test using the stacked model
 print('\nPredicting final loss on test set...')
-y_test = stacked_model.predict(X_test)
+if hasattr(xgb_model, 'best_ntree_limit'):
+    y_test = xgb_model.predict(X_test, ntree_limit=xgb_model.best_ntree_limit)
+else:
+    y_test = xgb_model.predict(X_test)
 
 # =============================================================================
 # Output model and prediction in submission format
